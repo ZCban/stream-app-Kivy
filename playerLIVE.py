@@ -1,6 +1,7 @@
 import threading
 import requests
 from flask import Flask, Response
+from werkzeug.serving import make_server
 
 from kivy.config import Config
 Config.set('kivy', 'video', 'ffpyplayer')
@@ -10,14 +11,16 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.video import Video
 from kivy.core.window import Window
 from kivy.uix.button import Button
-from kivy.uix.slider import Slider
-from kivy.uix.label import Label
-from kivy.clock import Clock
 
 # === FLASK PROXY ===
 app = Flask(__name__)
 _source_url = None
 _headers = {}
+
+# Controllo singleton per il server Flask
+_flask_started = False
+_flask_lock = threading.Lock()
+_server = None  # Oggetto server WSGI per lo shutdown
 
 def set_proxy_data(url, headers):
     global _source_url, _headers
@@ -47,15 +50,25 @@ def serve_ts(segment):
         return Response(f"Errore nel TS proxy: {e}", status=500)
 
 def start_flask():
-    app.run(port=5000, debug=False, use_reloader=False)
+    global _server
+    print("🚀 Avvio server Flask su http://127.0.0.1:5000")
+    _server = make_server("127.0.0.1", 5000, app)
+    _server.serve_forever()
 
-# === UTILITÀ ===
-def format_time(seconds):
-    if not seconds or seconds < 0:
-        return "--:--"
-    m, s = divmod(int(seconds), 60)
-    h, m = divmod(m, 60)
-    return f"{h:02}:{m:02}:{s:02}"
+def start_flask_once():
+    global _flask_started
+    with _flask_lock:
+        if not _flask_started:
+            _flask_started = True
+            threading.Thread(target=start_flask, daemon=True).start()
+
+def stop_flask():
+    global _server, _flask_started
+    if _server:
+        print("🛑 Arresto server Flask")
+        _server.shutdown()
+        _server = None
+        _flask_started = False
 
 # === KIVY VIDEO PLAYER (usa il proxy) ===
 class VideoStreamSimple(BoxLayout):
@@ -63,9 +76,6 @@ class VideoStreamSimple(BoxLayout):
         super().__init__(orientation='vertical', **kwargs)
         self.video_url = url
         self.previous_screen = previous_screen
-        self.is_muted = False
-        self.was_volume = 1.0
-        self.is_fullscreen = False
 
         self.video = Video(
             source=self.video_url,
@@ -73,11 +83,11 @@ class VideoStreamSimple(BoxLayout):
             volume=1.0,
             options={'allow_stretch': True},
             play=True,
-            size_hint=(1, 1)  # OCCUPA TUTTO LO SPAZIO DISPONIBILE
+            size_hint=(1, 1)
         )
         self.add_widget(self.video)
 
-        # Controlli in alto (più sottili)
+        # Controlli
         top_controls = BoxLayout(size_hint_y=None, height=40, spacing=5)
         btn_back = Button(text='🖙 Indietro', on_press=self.go_back)
         btn_play = Button(text='⏯', on_press=self.toggle_play)
@@ -101,11 +111,11 @@ class VideoStreamSimple(BoxLayout):
 
     def go_back(self, instance):
         self.stop()
+        stop_flask()  # Ferma il server Flask quando si torna indietro
         app = App.get_running_app()
         app.root.current = self.previous_screen
 
-
-# === KIVY APP ===
+# === KIVY APP (facoltativa se standalone) ===
 class VideoApp(App):
     def __init__(self, url, referer, **kwargs):
         super().__init__(**kwargs)
@@ -114,7 +124,7 @@ class VideoApp(App):
 
     def build(self):
         return VideoStreamSimple(url="http://127.0.0.1:5000/proxy.m3u8")
-
+        
 # === MAIN  test===
 #if __name__ == '__main__':
 #    PAGINA_STREAM = "https://calcio.codes/live/everton-vs-arsenal"
