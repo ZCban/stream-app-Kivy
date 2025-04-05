@@ -12,6 +12,8 @@ from kivy.uix.video import Video
 from kivy.core.window import Window
 from kivy.uix.button import Button
 from kivy.uix.slider import Slider
+from kivy.uix.label import Label
+from kivy.clock import Clock
 
 
 # === FLASK PROXY ===
@@ -72,22 +74,17 @@ def stop_flask():
         _server = None
         _flask_started = False
 
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.video import Video
-from kivy.core.window import Window
-from kivy.uix.button import Button
-from kivy.uix.slider import Slider
-from kivy.uix.label import Label
-from kivy.clock import Clock
 
-from playerLIVE import stop_flask  # Assicurati che questa funzione esista
+#from playerLIVE import stop_flask
+
+
 
 class VideoStreamSimple(BoxLayout):
     def __init__(self, url, previous_screen="main", **kwargs):
         super().__init__(orientation='vertical', **kwargs)
         self.video_url = url
         self.previous_screen = previous_screen
+        self.is_fullscreen = False  # Track del fullscreen
 
         # === Video ===
         self.video = Video(
@@ -105,10 +102,9 @@ class VideoStreamSimple(BoxLayout):
         top_controls = BoxLayout(size_hint_y=None, height=40, spacing=5)
 
         btn_back = Button(text='🖙 Indietro', on_press=self.go_back)
-        self.btn_play = Button(text='Pausa', on_press=self.toggle_play)
-        btn_fullscreen = Button(text='fullscreen', on_press=self.toggle_fullscreen)
+        self.btn_play = Button(text='⏸ Pausa', on_press=self.toggle_play)
+        btn_fullscreen = Button(text='⛶ Fullscreen', on_press=self.toggle_fullscreen)
 
-        # === Volume ===
         self.volume_slider = Slider(min=0, max=1, value=1.0, step=0.01)
         self.volume_slider.bind(value=self.on_volume_change)
 
@@ -119,7 +115,7 @@ class VideoStreamSimple(BoxLayout):
         top_controls.add_widget(btn_back)
         top_controls.add_widget(self.btn_play)
         top_controls.add_widget(btn_fullscreen)
-        top_controls.add_widget(Label(text="volume"))
+        top_controls.add_widget(Label(text="🔊"))
         top_controls.add_widget(self.volume_slider)
         top_controls.add_widget(self.volume_label)
 
@@ -131,21 +127,23 @@ class VideoStreamSimple(BoxLayout):
     def toggle_play(self, instance):
         if self.video.state == 'play':
             self.video.state = 'pause'
-            self.btn_play.text = 'Play'
+            self.btn_play.text = '▶️ Play'
         else:
             self.video.state = 'play'
-            self.btn_play.text = 'Pausa'
+            self.btn_play.text = '⏸ Pausa'
 
     def update_play_button(self, dt):
         if not self.video:
             return
         if self.video.state == 'play':
-            self.btn_play.text = 'Pausa'
+            self.btn_play.text = '⏸ Pausa'
         elif self.video.state == 'pause':
-            self.btn_play.text = 'Play'
+            self.btn_play.text = '▶️ Play'
 
     def toggle_fullscreen(self, instance):
-        Window.fullscreen = not Window.fullscreen
+        self.is_fullscreen = not self.is_fullscreen
+        Window.fullscreen = 'auto' if self.is_fullscreen else False
+        print("🖥️ Fullscreen ON" if self.is_fullscreen else "🖥️ Fullscreen OFF")
 
     def on_volume_change(self, instance, value):
         if self.video:
@@ -163,9 +161,9 @@ class VideoStreamSimple(BoxLayout):
     def go_back(self, instance):
         self.stop()
         stop_flask()
+        Window.fullscreen = False  # Esce dal fullscreen se era attivo
         app = App.get_running_app()
         app.root.current = self.previous_screen
-
 
 # === KIVY APP (facoltativa se standalone) ===
 class VideoApp(App):
