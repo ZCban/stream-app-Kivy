@@ -81,7 +81,9 @@ class VideoStreamSimple(BoxLayout):
             source=self.video_url,
             state='play',
             volume=1.0,
-            options={'allow_stretch': True},
+            allow_stretch=True,     # <-- OK
+            keep_ratio=False,       # <-- OK
+            #options={'allow_stretch': True,'keep_ratio':False},
             play=True,
             size_hint=(1, 1)
         )
@@ -124,22 +126,3 @@ class VideoApp(App):
 
     def build(self):
         return VideoStreamSimple(url="http://127.0.0.1:5000/proxy.m3u8")
-        
-# === MAIN  test===
-#if __name__ == '__main__':
-#    PAGINA_STREAM = "https://calcio.codes/live/everton-vs-arsenal"
-#    risultati = estrai_link_m3u8_da_url(PAGINA_STREAM)
-
-#     if not risultati:
-#         print("❌ Nessuno stream trovato.")
-#         exit(1)
-
-#     SOURCE_URL = risultati[0]["url"]
-#     REFERER = risultati[0]["referer"]
-#     proxied_headers = get_headers_for_ffmpeg(SOURCE_URL, REFERER)#
-
-#     print(f"🎬 Trovato:\n  ➤ Stream: {SOURCE_URL}\n  ➤ Referer: {REFERER}")
-
-#     threading.Thread(target=start_flask, daemon=True).start()
-#     VideoApp(SOURCE_URL, REFERER).run()
-
