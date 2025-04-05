@@ -505,9 +505,7 @@ class EpisodeScreen(Screen):
             m3u8 = self.plugin.resolve_stream_url(link)
             add_to_history(self.title.text, label)
 
-            #for external play no kivy
             def switch_to_player_external(dt):
-                #PlayerScreen.play(m3u8)
                 VideoStream(url=m3u8, previous_screen=self.name)
 
             #for integreted player inside kivy
@@ -581,9 +579,11 @@ class PlayerScreen(Screen):
         # --- Caso m3u8 diretto ---
         else:
             self.stream_widget = VideoStreaminternal(url=m3u8_data, previous_screen=self.previous_screen)
-
         # Aggiungi il player alla schermata
         self.layout.add_widget(self.stream_widget)
+
+
+
 
 
 # =============================
