@@ -16,7 +16,7 @@ from config_utils import load_config, save_config
 from history import load_history, save_history, clear_history, export_history, import_history , add_to_history
 from playerexternal import VideoStream
 from playerinternal import VideoStreaminternal
-from playerLIVE import start_flask, set_proxy_data, VideoStreamSimple
+from playerLIVE import start_flask, set_proxy_data, VideoStreamSimple,start_flask_once
 
 
 # Importa i canali plugin
@@ -34,6 +34,7 @@ THEMES = {
 config = load_config()
 current_theme = config.get("theme", "dark")
 highlight_color = config.get("highlight_color", [1, 1, 0, 1])
+
 
 
 def apply_theme(theme_name):
@@ -295,11 +296,6 @@ class HistoryScreen(Screen):
 # =============================
 # SettingsScreen
 # =============================
-from kivy.uix.popup import Popup
-from kivy.uix.filechooser import FileChooserIconView
-from history import load_history, save_history, clear_history
-import json
-import os
 
 class SettingsScreen(Screen):
     HIGHLIGHT_COLORS = [
@@ -308,7 +304,7 @@ class SettingsScreen(Screen):
         ([1, 1, 0, 1], "🟨 Giallo"),
         ([0, 0.5, 1, 1], "🟦 Azzurro"),
         ([1, 0.5, 0, 1], "🟧 Arancione"),
-        ([0.5, 0.2, 0.8, 1], "🌸 viola"),
+        ([0.5, 0.2, 0.8, 1], "🌸 Viola"),
         ([0.8, 1, 0.6, 1], "💚 Verde Lime")
     ]
 
@@ -316,6 +312,7 @@ class SettingsScreen(Screen):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical')
 
+        # Pulsanti principali
         btn_history = Button(text="📺 Cronologia episodi visti", size_hint_y=None, height=50)
         btn_history.bind(on_press=self.open_history)
 
@@ -324,6 +321,9 @@ class SettingsScreen(Screen):
 
         self.highlight_btn = Button(text="", size_hint_y=None, height=50)
         self.highlight_btn.bind(on_press=self.toggle_highlight_color)
+
+        self.player_btn = Button(text="", size_hint_y=None, height=50)
+        self.player_btn.bind(on_press=self.toggle_player_mode)
 
         btn_export = Button(text="📤 Esporta cronologia", size_hint_y=None, height=50)
         btn_export.bind(on_press=self.export_history)
@@ -337,17 +337,22 @@ class SettingsScreen(Screen):
         back_btn = Button(text="🔙 Indietro", size_hint_y=None, height=50)
         back_btn.bind(on_press=self.go_back)
 
+        # Aggiunta dei pulsanti al layout
         self.layout.add_widget(btn_history)
         self.layout.add_widget(self.theme_btn)
         self.layout.add_widget(self.highlight_btn)
+        self.layout.add_widget(self.player_btn)
         self.layout.add_widget(btn_export)
         self.layout.add_widget(btn_import)
         self.layout.add_widget(btn_clear)
         self.layout.add_widget(back_btn)
+
         self.add_widget(self.layout)
 
+        # Aggiorna le etichette iniziali
         self.update_theme_label()
         self.update_highlight_label()
+        self.update_player_label()
 
     def open_history(self, instance):
         history_screen = self.manager.get_screen("history")
@@ -380,6 +385,15 @@ class SettingsScreen(Screen):
         current = next((label for color, label in self.HIGHLIGHT_COLORS if color == highlight_color), "🟨 Giallo")
         self.highlight_btn.text = f"Colore episodi visti {current}"
 
+    def toggle_player_mode(self, instance):
+        config["use_internal_player"] = not config.get("use_internal_player", True)
+        save_config(config)
+        self.update_player_label()
+
+    def update_player_label(self):
+        mode = "🎬 Interno" if config.get("use_internal_player", True) else "🌐 Esterno"
+        self.player_btn.text = f"Player predefinito: {mode}"
+
     def export_history(self, instance):
         history = load_history()
         with open("history_export.json", "w", encoding="utf-8") as f:
@@ -401,9 +415,7 @@ class SettingsScreen(Screen):
         file_chooser = FileChooserIconView()
         file_chooser.bind(on_submit=load_file)
 
-        popup = Popup(title="Importa cronologia",
-                      content=file_chooser,
-                      size_hint=(0.9, 0.9))
+        popup = Popup(title="Importa cronologia", content=file_chooser, size_hint=(0.9, 0.9))
         popup.open()
 
     def confirm_clear_history(self, instance):
@@ -413,7 +425,6 @@ class SettingsScreen(Screen):
         btns = BoxLayout(size_hint_y=None, height=50)
         yes_btn = Button(text="✅ Sì")
         no_btn = Button(text="❌ No")
-
         btns.add_widget(yes_btn)
         btns.add_widget(no_btn)
         content.add_widget(btns)
@@ -438,6 +449,7 @@ class SettingsScreen(Screen):
         popup = Popup(title="Info", content=content, size_hint=(None, None), size=(400, 200))
         ok_btn.bind(on_press=popup.dismiss)
         popup.open()
+
 
 
 # =============================
@@ -494,18 +506,21 @@ class EpisodeScreen(Screen):
             add_to_history(self.title.text, label)
 
             #for external play no kivy
-            def switch_to_player(dt):
+            def switch_to_player_external(dt):
                 #PlayerScreen.play(m3u8)
                 VideoStream(url=m3u8, previous_screen=self.name)
 
             #for integreted player inside kivy
-            def switch_to_player1(dt):
+            def switch_to_player_internal(dt):
                 player = self.manager.get_screen("player")
                 player.previous_screen = self.name
                 player.play(m3u8)
                 self.manager.current = "player"
 
-            Clock.schedule_once(switch_to_player)
+            if config.get("use_internal_player", True):
+                Clock.schedule_once(switch_to_player_internal)
+            else:
+                Clock.schedule_once(switch_to_player_external)
 
         threading.Thread(target=fetch).start()
 
@@ -556,7 +571,8 @@ class PlayerScreen(Screen):
             set_proxy_data(url, headers)
 
             # 2. Avvia il server Flask
-            threading.Thread(target=start_flask, daemon=True).start()
+            start_flask_once()  # ✅ Usa questo
+            #threading.Thread(target=start_flask, daemon=True).start()
 
 
             # 4. Usa il player che punta al proxy
