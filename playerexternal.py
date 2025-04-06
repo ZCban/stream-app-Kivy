@@ -1,21 +1,33 @@
 # player.py
 import subprocess
+import os
 from kivy.utils import platform
 
 if platform == 'android':
     from jnius import autoclass, cast
-import os
+
 
 class VideoStream:
-    def __init__(self, url, previous_screen):
+    def __init__(self, url, previous_screen,
+                 use_streamlink=False,
+                 use_ffplay=False,
+                 headers=None,
+                 ffplay_options=None):
         self.url = url
         self.previous_screen = previous_screen
+        self.use_streamlink = use_streamlink
+        self.use_ffplay = use_ffplay
+        self.headers = headers or {}
+        self.ffplay_options = ffplay_options or []
 
-        if platform == 'android':
+        if self.use_streamlink:
+            self._open_with_streamlink()
+        elif self.use_ffplay:
+            self._open_ffplay_windows()
+        elif platform == 'android':
             self._open_vlc_android()
         elif platform == 'win':
             self._open_vlc_windows()
-            #self._open_ffplay_windows()
         else:
             print("⚠️ Il sistema non supporta VLC esterno. URL:", self.url)
 
@@ -27,7 +39,7 @@ class VideoStream:
 
             intent = Intent(Intent.ACTION_VIEW)
             intent.setDataAndType(Uri.parse(self.url), "video/*")
-            intent.setPackage("org.videolan.vlc")  # Pacchetto ufficiale VLC
+            intent.setPackage("org.videolan.vlc")
 
             currentActivity = cast('android.app.Activity', PythonActivity.mActivity)
             currentActivity.startActivity(intent)
@@ -37,12 +49,11 @@ class VideoStream:
 
     def _open_vlc_windows(self):
         try:
-            vlc_path = "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"  # Il percorso di VLC (verifica)
+            vlc_path = "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
             if not os.path.exists(vlc_path):
                 print("⚠️ VLC non trovato su Windows.")
                 return
 
-            # Costruisce il comando per eseguire VLC con l'URL .m3u8
             subprocess.Popen([vlc_path, self.url])
             print(f"🔊 VLC aperto su Windows per {self.url}")
 
@@ -51,8 +62,32 @@ class VideoStream:
 
     def _open_ffplay_windows(self):
         try:
-            # Puoi modificare questo percorso se ffplay non è nel PATH
-            subprocess.Popen(["ffplay","-autoexit", "-infbuf", self.url])
-            print(f"▶️ ffplay avviato con: {self.url}")
+            command = ["ffplay"] + self.ffplay_options + ["-autoexit", "-infbuf"]
+
+            if self.headers:
+                # Crea una stringa header come richiesto da ffplay
+                header_str = "".join(f"{k}: {v}\r\n" for k, v in self.headers.items())
+                command += ["-headers", header_str]
+
+            command.append(self.url)
+
+            print(f"▶️ Avvio ffplay con: {' '.join(command)}")
+            subprocess.Popen(command)
         except Exception as e:
             print("❌ Errore durante l'avvio di ffplay:", e)
+
+    def _open_with_streamlink(self):
+        try:
+            command = ["streamlink"]
+
+            for key, value in self.headers.items():
+                command += ["--http-header", f"{key}={value}"]
+
+            command += [self.url, "best"]
+
+            print("🚀 Avvio stream con Streamlink + VLC:")
+            print(" ".join(command))
+            subprocess.Popen(command)
+        except Exception as e:
+            print("❌ Errore durante l'avvio di Streamlink:", e)
+
