@@ -503,6 +503,11 @@ class EpisodeScreen(Screen):
     def play_episode(self, link, label):
         def fetch():
             m3u8 = self.plugin.resolve_stream_url(link)
+            # ✅ Controllo se lo stream è valido
+            if not m3u8:
+                print("❌ Nessun link valido trovato. Player non verrà avviato.")
+                return  # oppure mostra un popup d'errore
+
             add_to_history(self.title.text, label)
 
             def switch_to_player_external(dt):
@@ -543,7 +548,7 @@ class PlayerScreen1(Screen):
 
 
 # IMPORTA anche SOURCE_URL come stringa globale
-SOURCE_URL = None  # se non importato direttamente da playerlive.py
+#SOURCE_URL = None  # se non importato direttamente da playerlive.py
 
 class PlayerScreen(Screen):
     def __init__(self, **kwargs):
@@ -555,6 +560,7 @@ class PlayerScreen(Screen):
 
     def play(self, m3u8_data):
         global SOURCE_URL  # Rende modificabile la variabile globale
+
 
         # Rimuovi vecchio player se c'è
         if self.stream_widget:
