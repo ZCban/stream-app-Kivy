@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from estrai_link_m3u8_da_url import estrai_link_m3u8_da_url,get_headers_for_ffmpeg
+from estrai_link_m3u8_da_url import estrai_link_m3u8_da_url#,get_headers_for_ffmpeg
 
 
 BASE_URL = "https://calcio.codes/streaming-gratis-calcio-1.php"
@@ -48,23 +48,12 @@ def resolve_stream_url(supervideo_url):
     risultati = estrai_link_m3u8_da_url(supervideo_url)
 
     if not risultati:
-        print("❌ Nessun link .m3u8 trovato.")
+        print(f"❌ Nessun link .m3u8 trovato per {supervideo_url}")
         return None
 
-    stream = risultati[0]  # puoi aggiungere selezione se più link
-    url = stream['url']
-    referer = stream['referer']
-    headers = get_headers_for_ffmpeg(url, referer)
+    stream = risultati[0]
+    return stream["url"], stream["headers"]
 
-    print("\n✅ Link .m3u8 trovato:")
-    print(f"- {url}")
-    print(f"  ↳ Referer: {referer}")
-    print(f"  ↳ Headers: {headers}\n")
-
-    SOURCE_URL = url
-    proxied_headers = headers
-
-    return SOURCE_URL,proxied_headers
 
 
 
