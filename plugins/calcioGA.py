@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from estrai_link_m3u8_da_url import estrai_link_m3u8_da_url#,get_headers_for_ffmpeg
 
 
-BASE_URL = "https://calcio.codes/streaming-gratis-calcio-1.php"
+BASE_URL = "https://calcio.directory/streaming-gratis-calcio-1.php"
 
 def get_name():
     return "Calcio Codes"
