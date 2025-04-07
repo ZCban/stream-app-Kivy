@@ -1,6 +1,6 @@
 import threading
 import requests
-from flask import Flask, Response
+from flask import Flask, Response, request
 from werkzeug.serving import make_server
 
 from kivy.config import Config
@@ -21,15 +21,18 @@ app = Flask(__name__)
 _source_url = None
 _headers = {}
 
-# Controllo singleton per il server Flask
 _flask_started = False
 _flask_lock = threading.Lock()
-_server = None  # Oggetto server WSGI per lo shutdown
+_server = None
 
 def set_proxy_data(url, headers):
     global _source_url, _headers
     _source_url = url
     _headers = headers
+    print("\n🧾 HEADER INVIATI AL PROXY:")
+    for k, v in headers.items():
+        print(f"  {k}: {v}")
+
 
 @app.route('/proxy.m3u8')
 def serve_m3u8():
@@ -37,21 +40,47 @@ def serve_m3u8():
         return Response("⛔ Stream non inizializzato", status=503)
     try:
         r = requests.get(_source_url, headers=_headers)
-        return Response(r.text, mimetype='application/vnd.apple.mpegurl')
+        content = r.text
+
+        def rewrite_line(line):
+            line = line.strip()
+            if line.startswith("#"):  # non riscrivere metadata
+                return line
+            if line.startswith("http"):
+                return f"/segment.ts?url={line}"
+            elif line.endswith(".ts"):
+                base = _source_url.rsplit("/", 1)[0]
+                return f"/segment.ts?url={base}/{line}"
+            else:
+                return line
+
+        new_lines = [rewrite_line(line) for line in content.splitlines()]
+        new_content = "\n".join(new_lines)
+
+        print("\n📺 CONTENUTO .m3u8 PROXY:")
+        print(new_content)
+        print("🔚 FINE\n")
+
+        return Response(new_content, mimetype='application/vnd.apple.mpegurl')
     except Exception as e:
         return Response(f"Errore nel proxy: {e}", status=500)
 
-@app.route('/<path:segment>')
-def serve_ts(segment):
+
+@app.route('/segment.ts')
+def serve_ts():
     if not _source_url:
         return Response("⛔ Stream non inizializzato", status=503)
     try:
-        base_url = _source_url.rsplit('/', 1)[0]
-        ts_url = f"{base_url}/{segment}"
+        ts_url = request.args.get("url")
+        if not ts_url:
+            return Response("❌ URL mancante", status=400)
+
+        print(f"🎥 Scarico segmento: {ts_url}")
         r = requests.get(ts_url, headers=_headers, stream=True)
         return Response(r.iter_content(chunk_size=4096), content_type=r.headers.get('Content-Type'))
     except Exception as e:
         return Response(f"Errore nel TS proxy: {e}", status=500)
+
 
 def start_flask():
     global _server
@@ -75,18 +104,14 @@ def stop_flask():
         _flask_started = False
 
 
-#from playerLIVE import stop_flask
-
-
-
+# === PLAYER KIVY ===
 class VideoStreamSimple(BoxLayout):
     def __init__(self, url, previous_screen="main", **kwargs):
         super().__init__(orientation='vertical', **kwargs)
         self.video_url = url
         self.previous_screen = previous_screen
-        self.is_fullscreen = False  # Track del fullscreen
+        self.is_fullscreen = False
 
-        # === Video ===
         self.video = Video(
             source=self.video_url,
             state='play',
@@ -98,7 +123,6 @@ class VideoStreamSimple(BoxLayout):
         )
         self.add_widget(self.video)
 
-        # === Controlli ===
         top_controls = BoxLayout(size_hint_y=None, height=40, spacing=5)
 
         btn_back = Button(text='🖙 Indietro', on_press=self.go_back)
@@ -111,7 +135,6 @@ class VideoStreamSimple(BoxLayout):
         self.volume_label = Label(text="100%")
         self.volume_slider.bind(value=self.update_volume_label)
 
-        # Aggiungi i controlli alla barra
         top_controls.add_widget(btn_back)
         top_controls.add_widget(self.btn_play)
         top_controls.add_widget(btn_fullscreen)
@@ -120,8 +143,6 @@ class VideoStreamSimple(BoxLayout):
         top_controls.add_widget(self.volume_label)
 
         self.add_widget(top_controls)
-
-        # === Aggiorna UI dinamicamente ===
         Clock.schedule_interval(self.update_play_button, 0.5)
 
     def toggle_play(self, instance):
@@ -135,10 +156,7 @@ class VideoStreamSimple(BoxLayout):
     def update_play_button(self, dt):
         if not self.video:
             return
-        if self.video.state == 'play':
-            self.btn_play.text = '⏸ Pausa'
-        elif self.video.state == 'pause':
-            self.btn_play.text = '▶️ Play'
+        self.btn_play.text = '⏸ Pausa' if self.video.state == 'play' else '▶️ Play'
 
     def toggle_fullscreen(self, instance):
         self.is_fullscreen = not self.is_fullscreen
@@ -161,16 +179,31 @@ class VideoStreamSimple(BoxLayout):
     def go_back(self, instance):
         self.stop()
         stop_flask()
-        Window.fullscreen = False  # Esce dal fullscreen se era attivo
+        Window.fullscreen = False
         app = App.get_running_app()
         app.root.current = self.previous_screen
 
-# === KIVY APP (facoltativa se standalone) ===
+
+# === APP KIVY PER TEST ===
 class VideoApp(App):
-    def __init__(self, url, referer, **kwargs):
+    def __init__(self, url, headers, **kwargs):
         super().__init__(**kwargs)
-        self.url = url
-        self.referer = referer
+        set_proxy_data(url, headers)
+        start_flask_once()
+
+    def build(self):
+        return VideoStreamSimple(url="http://127.0.0.1:5000/proxy.m3u8")
+
+# === ESEMPIO USO ===
+if __name__ == "__main__":
+     url = "https://hls.kangal.icu/hls/skynba/index.m3u8"
+     headers = {
+         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+         "Referer": "https://calciostreaming.lat/",
+     }
+     VideoApp(url, headers).run()
+
+
 
     def build(self):
         return VideoStreamSimple(url="http://127.0.0.1:5000/proxy.m3u8")
